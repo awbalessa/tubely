@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -46,7 +49,12 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 
-	mediaType := header.Header.Get("Content-Type")
+	mimeType := header.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(mimeType)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unable to media type", err)
+		return
+	}
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to get video from database", err)
@@ -65,24 +73,30 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	case "image/png":
 		extension = ".png"
 	default:
-		extension = ".bin"
+		respondWithError(w, http.StatusBadRequest, "Invalid file format", err)
+		return
 	}
-
-	path := filepath.Join(cfg.assetsRoot, videoIDString+extension)
+	randomBytes := make([]byte, 32)
+	_, err = rand.Read(randomBytes)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Internal server error", err)
+	}
+	randomFilename := base64.RawURLEncoding.EncodeToString(randomBytes)
+	path := filepath.Join(cfg.assetsRoot, randomFilename+extension)
 	newFile, err := os.Create(path)
 	if err != nil {
-		respondWithError(w, 500, "Internal server error", err)
+		respondWithError(w, http.StatusInternalServerError, "Internal server error", err)
 		return
 	}
 
 	defer newFile.Close()
 	_, err = io.Copy(newFile, file)
 	if err != nil {
-		respondWithError(w, 500, "Internal server error", err)
+		respondWithError(w, http.StatusInternalServerError, "Internal server error", err)
 		return
 	}
 
-	thumbStr := fmt.Sprintf("http://localhost:%s/assets/%s%s", cfg.port, videoIDString, extension)
+	thumbStr := fmt.Sprintf("http://localhost:%s/assets/%s%s", cfg.port, randomFilename, extension)
 
 	video.ThumbnailURL = &thumbStr
 	if err = cfg.db.UpdateVideo(video); err != nil {

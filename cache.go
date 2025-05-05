@@ -1,10 +1,14 @@
 package main
 
-import "net/http"
+import (
+	"log"
+	"net/http"
+)
 
-func cacheMiddleware(next http.Handler) http.Handler {
+func noCacheMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "max-age=3600")
+		log.Print("no store is being set")
+		w.Header().Set("Cache-Control", "no-store")
 		next.ServeHTTP(w, r)
 	})
 }
