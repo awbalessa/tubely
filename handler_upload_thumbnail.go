@@ -18,7 +18,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	videoIDString := r.PathValue("videoID")
 	videoID, err := uuid.Parse(videoIDString)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid ID", err)
+		respondWithError(w, http.StatusBadRequest, "Invalid image ID", err)
 		return
 	}
 
@@ -52,7 +52,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	mimeType := header.Header.Get("Content-Type")
 	mediaType, _, err := mime.ParseMediaType(mimeType)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Unable to media type", err)
+		respondWithError(w, http.StatusBadRequest, "Unable to get media type", err)
 		return
 	}
 	video, err := cfg.db.GetVideo(videoID)

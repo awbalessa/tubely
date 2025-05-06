@@ -1,5 +1,6 @@
 out
 *.db
 .env
+.DS_Store
 assets/
 samples/
