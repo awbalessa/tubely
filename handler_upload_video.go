@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
@@ -88,12 +90,49 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	aspect, err := getVideoAspectRatio(tempFile.Name())
+	if err != nil {
+		respondWithError(w, 500, "Error getting video aspect ratio", err)
+		return
+	}
+
+	randomBytes := make([]byte, 32)
+	_, err = rand.Read(randomBytes)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Internal server error", err)
+		return
+	}
+	randomString := base64.RawURLEncoding.EncodeToString(randomBytes)
+
+	var fileKey string
+	switch aspect {
+	case "16:9":
+		fileKey = "landscape/" + randomString + extension
+	case "9:16":
+		fileKey = "portrait/" + randomString + extension
+	default:
+		fileKey = "other/" + randomString + extension
+	}
+
 	tempFile.Seek(0, io.SeekStart)
-	fileKey := fmt.Sprintf("%x%s", uuid.New(), extension)
+	fastStartPath, err := processVideoForFastStart(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to pre-process video", err)
+		return
+	}
+	defer os.Remove(fastStartPath)
+
+	fastStartFile, err := os.Open(fastStartPath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to open file", err)
+		return
+	}
+	defer fastStartFile.Close()
+
 	putObjectInput := s3.PutObjectInput{
 		Bucket:      aws.String(cfg.s3Bucket),
 		Key:         aws.String(fileKey),
-		Body:        tempFile,
+		Body:        fastStartFile,
 		ContentType: aws.String(mediaType),
 	}
 	_, err = cfg.s3Client.PutObject(r.Context(), &putObjectInput)
