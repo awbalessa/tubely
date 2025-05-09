@@ -2,11 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math"
 	"os/exec"
+	"strings"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 )
 
 func getVideoAspectRatio(filepath string) (string, error) {
@@ -57,4 +63,37 @@ func processVideoForFastStart(filepath string) (string, error) {
 	}
 
 	return outputPath, nil
+}
+
+func generatePresignedURL(s3Client *s3.Client, bucket, key string, expireTime time.Duration) (string, error) {
+	presignClient := s3.NewPresignClient(s3Client)
+	presignedHTTPRequest, err := presignClient.PresignGetObject(context.Background(), &s3.GetObjectInput{Bucket: &bucket, Key: &key}, s3.WithPresignExpires(expireTime))
+	if err != nil {
+		log.Printf("Error generating presigned HTTP request: %v", err)
+		return "", err
+	}
+
+	return presignedHTTPRequest.URL, nil
+}
+
+func (cfg *apiConfig) dbVideoToSignedVideo(video database.Video) (database.Video, error) {
+	if len(*video.VideoURL) == 0 {
+		return database.Video{}, fmt.Errorf("Video URL of zero length")
+	}
+
+	parts := strings.Split(*video.VideoURL, ",")
+	if len(parts) != 2 {
+		return database.Video{}, fmt.Errorf("invalid video URL format: %s", *video.VideoURL)
+	}
+	bucket := parts[0]
+	key := parts[1]
+
+	presignedURL, err := generatePresignedURL(cfg.s3Client, bucket, key, time.Hour)
+	if err != nil {
+		log.Print(err)
+		return database.Video{}, err
+	}
+
+	video.VideoURL = &presignedURL
+	return video, nil
 }
